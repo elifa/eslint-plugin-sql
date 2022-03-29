@@ -16,7 +16,7 @@ const create = (context) => {
   const ignoreExpressions = pluginOptions.ignoreExpressions === true;
   const ignoreInline = pluginOptions.ignoreInline !== false;
   const ignoreTagless = pluginOptions.ignoreTagless !== false;
-  const ignoreStartWithNewLine = pluginOptions.ignoreStartWithNewLine !== false;
+  const matchIndentation = pluginOptions.matchIndentation !== false;
 
   return {
     TemplateLiteral (node) {
@@ -48,9 +48,34 @@ const create = (context) => {
 
       let formatted = format(literal, context.options[1]);
 
-      if (ignoreStartWithNewLine && literal.startsWith('\n') && !formatted.startsWith('\n')) {
-        formatted = '\n' + formatted;
+      formatted = formatted.trimStart();
+
+      if (matchIndentation) {
+        let firstNodeOnLine = node;
+
+        while (
+          firstNodeOnLine.parent &&
+          firstNodeOnLine.loc.start.line === firstNodeOnLine.parent.loc.start.line
+        ) {
+          firstNodeOnLine = firstNodeOnLine.parent;
+        }
+
+        const startingColumn = firstNodeOnLine.loc.start.column;
+        formatted = formatted.replace(/\n+$/g, '') + '\n';
+        const formattedLines = formatted.split('\n');
+        formatted = formattedLines
+          .map((line) => {
+            // Indent each subsequent line based on the spaces option
+            const indentSpaces = context.options[1].spaces || 4;
+
+            const indentation = ' '.repeat(startingColumn + indentSpaces);
+
+            return `${indentation}${line}`;
+          })
+          .join('\n');
       }
+
+      formatted = '\n' + formatted.replace(/^\n+/g, '');
 
       if (formatted !== literal) {
         context.report({
@@ -66,10 +91,7 @@ const create = (context) => {
               index++;
             }
 
-            return fixer.replaceTextRange([
-              node.quasis[0].range[0],
-              node.quasis[node.quasis.length - 1].range[1],
-            ], '`\n' + final + '`');
+            return fixer.replaceText(node, '`' + final + '`');
           },
           message: 'Format the query',
           node,
@@ -99,11 +121,11 @@ export default {
             default: true,
             type: 'boolean',
           },
-          ignoreStartWithNewLine: {
+          ignoreTagless: {
             default: true,
             type: 'boolean',
           },
-          ignoreTagless: {
+          matchIndentation: {
             default: true,
             type: 'boolean',
           },
